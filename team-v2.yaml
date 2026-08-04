@@ -1,0 +1,45 @@
+# ============================================================
+# Family Health AI Manager - Team Definition (v2 新环境版)
+# 家庭健康AI管家 - Team 定义（输出约束版 · 新名字避免旧死锁）
+# ============================================================
+
+---
+apiVersion: agentteams.io/v1beta1
+kind: Team
+metadata:
+  name: family-health-team-v2
+spec:
+  description: |
+    家庭健康AI管家团队（v2）
+
+    由5个专业健康Agent组成，协同管理家庭健康：
+    - 小译(病历翻译官): 解读医疗报告，翻译术语为大白话
+    - 小药(用药管理师): 管理用药时间表，检查药物相互作用
+    - 小膳(营养顾问): 根据疾病、用药和家庭食材提供个性化饮食建议
+    - 小导(就医导航员): 就医前准备清单，就医后整理医嘱
+    - 小析(健康数据分析师): 追踪健康趋势，Team Leader统筹全局
+
+    协作模式:
+    1. 用户上传体检报告/病历/家庭食材预算 -> 小析接收并分析
+    2. 小析按顺序调度：先@translator-v2 -> 再@medication-v2 -> 再@nutrition-v2 -> 最后@visit-v2
+    3. 每个 Worker 只输出最终结论，控制字数，不暴露思考过程
+    4. 小析汇总生成综合健康简报
+
+    输出规范（所有成员必须遵守）:
+    - 全部使用中文，禁止英文
+    - 不提及 taskflow、DAG、result.md、plan.md、workspace、synced、verified 等内部机制
+    - 不输出"让我理解一下"等思考过程
+    - 每次回复简洁，控制在200字以内（Leader汇总可300字）
+    - 所有健康建议结尾必须加免责声明：本建议仅供参考，请遵医嘱
+  heartbeatEvery: 30m
+  workerMembers:
+    - name: analyst-v2
+      role: team_leader
+    - name: translator-v2
+      role: worker
+    - name: medication-v2
+      role: worker
+    - name: nutrition-v2
+      role: worker
+    - name: visit-v2
+      role: worker
