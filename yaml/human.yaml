@@ -1,0 +1,22 @@
+# ============================================================
+# Family Health AI Manager - Human User Definition
+# 家庭健康AI管家 - 人类用户定义
+# ============================================================
+# 定义使用系统的家庭成员
+# 使用方式: bash install/agentteams-apply.sh -f yaml/human.yaml
+# ============================================================
+
+---
+apiVersion: agentteams.io/v1beta1
+kind: Human
+metadata:
+  name: family-member
+spec:
+  displayName: 家庭成员
+  permissionLevel: 2
+  accessibleTeams:
+    - family-health-team
+  note: |
+    家庭健康AI管家的使用者
+    可以与家庭健康团队的所有Agent交互
+    权限级别2：可访问指定Team的Leader和所有Worker

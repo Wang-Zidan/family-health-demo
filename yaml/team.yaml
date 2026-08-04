@@ -1,0 +1,43 @@
+# ============================================================
+# Family Health AI Manager - Team Definition
+# 家庭健康AI管家 - Team 定义
+# ============================================================
+# Team Leader: health-analyst (健康数据分析师)
+# Team Members: medical-translator, medication-manager, nutrition-advisor, visit-navigator
+# 使用方式: bash install/agentteams-apply.sh -f yaml/team.yaml
+# ============================================================
+
+---
+apiVersion: agentteams.io/v1beta1
+kind: Team
+metadata:
+  name: family-health-team
+spec:
+  description: |
+    家庭健康AI管家团队
+
+    由5个专业健康Agent组成，协同管理家庭健康：
+    - 小译(病历翻译官): 解读医疗报告，翻译术语为大白话
+    - 小药(用药管理师): 管理用药时间表，检查药物相互作用
+    - 小膳(营养顾问): 根据疾病和用药提供个性化饮食建议
+    - 小导(就医导航员): 就医前准备清单，就医后整理医嘱
+    - 小析(健康数据分析师): 追踪健康趋势，Team Leader统筹全局
+
+    协作模式:
+    1. 用户上传体检报告/病历 -> 小译翻译解读
+    2. 小译输出疾病信息 -> 小药检查用药、小膳生成饮食建议
+    3. 用户需要就医 -> 小导准备就医清单
+    4. 小析持续追踪健康指标，发现异常主动预警
+    5. 小析作为Team Leader统筹所有工作，生成综合健康报告
+  heartbeatEvery: 30m
+  workerMembers:
+    - name: health-analyst
+      role: team_leader
+    - name: medical-translator
+      role: worker
+    - name: medication-manager
+      role: worker
+    - name: nutrition-advisor
+      role: worker
+    - name: visit-navigator
+      role: worker
