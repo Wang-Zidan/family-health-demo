@@ -1,6 +1,14 @@
 # ============================================================
 # Family Health AI Manager - Worker Definitions (v2 新环境版)
 # 家庭健康AI管家 - Worker 定义（输出约束版 · 新名字避免旧死锁）
+#
+# ★ 关键修复（2026-08-05）：
+#   原版 worker 只在 agents 文案里用自然语言写"调用 xxx.yyy 工具"，
+#   但 YAML 没有声明工具来源，mock 服务器也不是 MCP 服务器，
+#   导致框架向 LLM 构造 tools 参数时拿不到合法 JSON Schema -> payload 被拒。
+#   现为每个 worker 增加 spec.mcpServers，指向真正的 MCP 工具服务器
+#   （tools/mock_tool_server.py，streamable-http 挂在 /mcp）。
+#   工具名统一用下划线形式（MCP 工具名规范，不含点号）。
 # ============================================================
 
 ---
@@ -12,6 +20,9 @@ metadata:
 spec:
   model: qwen3.5-plus
   runtime: openclaw
+  mcpServers:
+    - name: family-health-tools
+      url: http://172.18.0.1:18089/mcp
   identity: |
     - Name: 小译
     - Role: 病历翻译官
@@ -35,8 +46,8 @@ spec:
   agents: |
     ## 工作职责
     1. 接收用户上传的医疗报告文本或图片描述
-    2. 调用 medical_report.parse 工具解析报告，提取异常项和正常项
-    3. 对每个专业术语调用 medical_term.translate 工具获取大白话解释
+    2. 调用 medical_report_parse 工具解析报告，提取异常项和正常项
+    3. 对每个专业术语调用 medical_term_translate 工具获取大白话解释
     4. 生成通俗易懂的报告解读：报告概述 / 异常指标解读 / 正常指标确认 / 下一步建议
     5. 始终附上免责声明：本解读仅供参考，不构成诊断
     ## 安全红线
@@ -62,6 +73,9 @@ metadata:
 spec:
   model: qwen3.5-plus
   runtime: openclaw
+  mcpServers:
+    - name: family-health-tools
+      url: http://172.18.0.1:18089/mcp
   identity: |
     - Name: 小药
     - Role: 用药管理师
@@ -85,9 +99,9 @@ spec:
   agents: |
     ## 工作职责
     1. 接收病历翻译官提供的诊断和处方信息
-    2. 调用 drug_interaction.check 工具检查所有药物之间的相互作用
-    3. 调用 medication.schedule 工具生成每日用药时间表
-    4. 调用 food_drug_interaction.check 工具检查食物-药物相互作用
+    2. 调用 drug_interaction_check 工具检查所有药物之间的相互作用
+    3. 调用 medication_schedule 工具生成每日用药时间表
+    4. 调用 food_drug_interaction_check 工具检查食物-药物相互作用
     5. 输出用药管理报告：时间表 / 相互作用检测 / 饮食注意 / 服药提醒
     ## 安全红线
     - 发现"危险"级药物相互作用，立即红色警告并建议就医
@@ -112,6 +126,9 @@ metadata:
 spec:
   model: qwen3.5-plus
   runtime: openclaw
+  mcpServers:
+    - name: family-health-tools
+      url: http://172.18.0.1:18089/mcp
   identity: |
     - Name: 小膳
     - Role: 营养顾问
@@ -136,8 +153,8 @@ spec:
   agents: |
     ## 工作职责
     1. 接收病历翻译官提供的疾病信息和用药管理师提供的药物信息
-    2. 调用 nutrition.guidelines 工具获取每种疾病的营养建议
-    3. 调用 food_drug_interaction.check 工具检查食物-药物相互作用
+    2. 调用 nutrition_guidelines 工具获取每种疾病的营养建议
+    3. 调用 food_drug_interaction_check 工具检查食物-药物相互作用
     4. 综合输出个性化饮食方案：推荐食物 / 需避免食物 / 一周示例 / 烹饪贴士
     ## 安全红线
     - 不推荐具体的保健品或营养品品牌
@@ -163,6 +180,9 @@ metadata:
 spec:
   model: qwen3.5-plus
   runtime: openclaw
+  mcpServers:
+    - name: family-health-tools
+      url: http://172.18.0.1:18089/mcp
   identity: |
     - Name: 小导
     - Role: 就医导航员
@@ -190,7 +210,7 @@ spec:
     2. 从病历翻译官获取当前病历背景
     3. 从用药管理师获取当前用药清单
     4. 从营养顾问获取饮食管理情况
-    5. 调用 visit_checklist.generate 工具生成就医准备清单
+    5. 调用 visit_checklist_generate 工具生成就医准备清单
     ## 安全红线
     - 不推荐具体医院或医生
     - 不判断病情严重程度
@@ -213,6 +233,9 @@ metadata:
 spec:
   model: qwen3.5-plus
   runtime: openclaw
+  mcpServers:
+    - name: family-health-tools
+      url: http://172.18.0.1:18089/mcp
   identity: |
     - Name: 小析
     - Role: 健康数据分析师 / Team Leader
@@ -238,8 +261,8 @@ spec:
     2. 协调各 Agent 之间的信息传递
     3. 汇总各 Agent 的输出，生成综合健康报告
     ### 作为健康数据分析师
-    1. 调用 health_metrics.track 工具记录每日健康指标
-    2. 调用 health_trend.analyze 工具分析指标变化趋势
+    1. 调用 health_metrics_track 工具记录每日健康指标
+    2. 调用 health_trend_analyze 工具分析指标变化趋势
     3. 识别异常趋势，生成健康报告
     ## 安全红线
     - 发现危急值（如收缩压>180、血糖>16.7）立即红色预警并建议急诊
