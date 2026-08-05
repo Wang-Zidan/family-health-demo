@@ -1,32 +1,36 @@
 #!/usr/bin/env python3
 """
-Family Health AI Manager - Mock Tool Server
-=============================================
-家庭健康AI管家 - 模拟工具服务器
+Family Health AI Manager - Mock Tool Server (MCP 版)
+=====================================================
+家庭健康AI管家 - 模拟工具服务器（已改为标准 MCP 服务器）
 
-为 AgentTeams 中的 5 个健康 Agent 提供模拟工具接口。
-每个工具接收 JSON 参数，返回模拟的健康数据。
+为何改成 MCP 服务器：
+    原版只是一个普通 HTTP 服务（/health + POST /tools/...），没有任何 JSON Schema。
+    AgentTeams(基于 alibaba/hiclaw) 的 Worker 通过 spec.mcpServers 关联 MCP 服务器，
+    框架用 MCP 协议拿到「带合法 JSON Schema 的工具列表」后，才能正确构造 OpenAI tools
+    参数发给 LLM。原版没有 schema -> tools payload 非法 -> "provider rejected the
+    request schema or tool payload"。本版用官方 mcp SDK(FastMCP) 暴露 10 个工具，
+    每个工具都有完整参数 schema，问题即解决。
 
 启动方式:
+    pip install "mcp>=1.2"
     python3 tools/mock_tool_server.py --host 0.0.0.0 --port 18089
 
-健康检查:
-    curl http://127.0.0.1:18089/health
-
-工具调用格式:
-    POST http://127.0.0.1:18089/tools/{scenario_id}/{tool_name}.{function_name}
-    Content-Type: application/json
-    Body: {"参数名": "参数值", ...}
+MCP 端点:   http://0.0.0.0:18089/mcp   (streamable-http)
+健康检查:   GET  http://127.0.0.1:18089/health
 """
 
 import json
 import argparse
 import random
 from datetime import datetime, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+from fastmcp import FastMCP
 
 # ============================================================
-# 模拟数据库
+# 模拟数据库（与原版一致，行为不变）
 # ============================================================
 
 # 医学术语翻译库
@@ -117,7 +121,7 @@ FOOD_DRUG_INTERACTIONS = {
     ("酒精", "阿司匹林"): "酒精加阿司匹林显著增加胃出血风险，避免同用",
 }
 
-# 模拟历史健康指标数据
+
 def generate_health_history(days=30):
     """生成模拟的健康指标历史数据"""
     history = []
@@ -125,7 +129,6 @@ def generate_health_history(days=30):
     base_bp_diastolic = 88
     base_glucose = 6.8
     base_heart_rate = 78
-
     for i in range(days):
         date = (datetime.now() - timedelta(days=days - i)).strftime("%Y-%m-%d")
         history.append({
@@ -140,16 +143,13 @@ def generate_health_history(days=30):
 
 
 # ============================================================
-# 工具实现
+# 工具实现（与原版一致，仅入参改为 dict）
 # ============================================================
 
 def tool_parse_medical_report(params):
-    """工具1: 解析医疗报告，提取关键信息"""
     report_text = params.get("report_text", "")
     report_type = params.get("report_type", "体检报告")
-
-    # 模拟解析结果
-    result = {
+    return {
         "report_type": report_type,
         "parsed_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "abnormal_items": [
@@ -167,11 +167,9 @@ def tool_parse_medical_report(params):
         "preliminary_assessment": "血压偏高、血糖偏高、血脂异常，建议关注心血管和代谢健康",
         "disclaimer": "本解析仅供参考，不构成诊断，请以医生判断为准"
     }
-    return result
 
 
 def tool_translate_medical_term(params):
-    """工具2: 翻译医学术语为大白话"""
     term = params.get("term", "")
     if term in MEDICAL_TERMS:
         info = MEDICAL_TERMS[term]
@@ -181,17 +179,15 @@ def tool_translate_medical_term(params):
             "severity_info": info["severity"],
             "analogy": _get_analogy(term)
         }
-    else:
-        return {
-            "term": term,
-            "plain_explanation": f"'{term}'暂未在常用术语库中找到，建议咨询医生获取准确解释",
-            "severity_info": "未知",
-            "analogy": ""
-        }
+    return {
+        "term": term,
+        "plain_explanation": f"'{term}'暂未在常用术语库中找到，建议咨询医生获取准确解释",
+        "severity_info": "未知",
+        "analogy": ""
+    }
 
 
 def _get_analogy(term):
-    """为医学术语生成通俗比喻"""
     analogies = {
         "高血压": "就像水管里水压太大，时间久了管壁（血管）容易受损",
         "2型糖尿病": "就像细胞的'门锁'坏了，糖分进不去细胞，全堵在血液里",
@@ -204,27 +200,16 @@ def _get_analogy(term):
 
 
 def tool_check_drug_interaction(params):
-    """工具3: 检查药物相互作用"""
     drug_list = params.get("drug_list", [])
     interactions = []
-
     for i, drug1 in enumerate(drug_list):
-        for drug2 in drug_list[i+1:]:
+        for drug2 in drug_list[i + 1:]:
             key = (drug1, drug2)
             reverse_key = (drug2, drug1)
             if key in DRUG_INTERACTIONS:
-                interactions.append({
-                    "drug1": drug1,
-                    "drug2": drug2,
-                    **DRUG_INTERACTIONS[key]
-                })
+                interactions.append({"drug1": drug1, "drug2": drug2, **DRUG_INTERACTIONS[key]})
             elif reverse_key in DRUG_INTERACTIONS:
-                interactions.append({
-                    "drug1": drug1,
-                    "drug2": drug2,
-                    **DRUG_INTERACTIONS[reverse_key]
-                })
-
+                interactions.append({"drug1": drug1, "drug2": drug2, **DRUG_INTERACTIONS[reverse_key]})
     if not interactions:
         return {
             "drug_list": drug_list,
@@ -232,38 +217,27 @@ def tool_check_drug_interaction(params):
             "result": "未发现已知的主要药物相互作用",
             "advice": "仍建议告知医生您正在服用的所有药物"
         }
-    else:
-        dangerous = [i for i in interactions if i["level"] == "危险"]
-        return {
-            "drug_list": drug_list,
-            "interactions_found": len(interactions),
-            "interactions": interactions,
-            "dangerous_count": len(dangerous),
-            "advice": "发现药物相互作用，请务必告知医生" if dangerous else "注意药物相互作用，建议咨询药师"
-        }
+    dangerous = [i for i in interactions if i["level"] == "危险"]
+    return {
+        "drug_list": drug_list,
+        "interactions_found": len(interactions),
+        "interactions": interactions,
+        "dangerous_count": len(dangerous),
+        "advice": "发现药物相互作用，请务必告知医生" if dangerous else "注意药物相互作用，建议咨询药师"
+    }
 
 
 def tool_get_medication_schedule(params):
-    """工具4: 获取用药时间表"""
     medications = params.get("medications", [])
-
-    schedule = {
-        "morning": [],
-        "noon": [],
-        "evening": [],
-        "before_sleep": []
-    }
-
+    schedule = {"morning": [], "noon": [], "evening": [], "before_sleep": []}
     for med in medications:
         name = med.get("name", "")
         freq = med.get("frequency", "每日1次")
         time = med.get("time", "morning")
         dose = med.get("dose", "1片")
-
         entry = {"medication": name, "dose": dose, "instruction": med.get("instruction", "饭后服用")}
         if time in schedule:
             schedule[time].append(entry)
-
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "schedule": schedule,
@@ -274,7 +248,6 @@ def tool_get_medication_schedule(params):
 
 
 def tool_get_nutrition_guidelines(params):
-    """工具5: 获取疾病营养建议"""
     condition = params.get("condition", "")
     if condition in NUTRITION_GUIDELINES:
         guide = NUTRITION_GUIDELINES[condition]
@@ -285,32 +258,24 @@ def tool_get_nutrition_guidelines(params):
             "dietary_tips": guide["tips"],
             "disclaimer": "营养建议仅供参考，具体饮食方案请咨询营养师或医生"
         }
-    else:
-        return {
-            "condition": condition,
-            "recommended_foods": ["均衡饮食", "多吃蔬菜水果", "适量优质蛋白", "控制油盐摄入"],
-            "foods_to_avoid": ["高油高盐食品", "过度加工食品"],
-            "dietary_tips": "保持均衡饮食，规律进餐",
-            "disclaimer": "通用建议，具体请咨询医生"
-        }
+    return {
+        "condition": condition,
+        "recommended_foods": ["均衡饮食", "多吃蔬菜水果", "适量优质蛋白", "控制油盐摄入"],
+        "foods_to_avoid": ["高油高盐食品", "过度加工食品"],
+        "dietary_tips": "保持均衡饮食，规律进餐",
+        "disclaimer": "通用建议，具体请咨询医生"
+    }
 
 
 def tool_check_food_drug_interaction(params):
-    """工具6: 检查食物-药物相互作用"""
     foods = params.get("foods", [])
     drugs = params.get("drugs", [])
     interactions = []
-
     for food in foods:
         for drug in drugs:
             key = (food, drug)
             if key in FOOD_DRUG_INTERACTIONS:
-                interactions.append({
-                    "food": food,
-                    "drug": drug,
-                    "description": FOOD_DRUG_INTERACTIONS[key]
-                })
-
+                interactions.append({"food": food, "drug": drug, "description": FOOD_DRUG_INTERACTIONS[key]})
     return {
         "foods": foods,
         "drugs": drugs,
@@ -321,11 +286,9 @@ def tool_check_food_drug_interaction(params):
 
 
 def tool_generate_visit_checklist(params):
-    """工具7: 生成就医准备清单"""
     visit_reason = params.get("visit_reason", "复诊")
     department = params.get("department", "内科")
     current_conditions = params.get("conditions", [])
-
     checklist = {
         "visit_info": {
             "department": department,
@@ -343,8 +306,6 @@ def tool_generate_visit_checklist(params):
         "symptoms_to_describe": [],
         "notes": "建议提前整理好想问医生的问题，避免忘记"
     }
-
-    # 根据病情生成问题
     if "高血压" in current_conditions:
         checklist["questions_to_ask"].extend([
             "我最近血压控制在什么范围比较理想？",
@@ -363,21 +324,17 @@ def tool_generate_visit_checklist(params):
             "需要继续服用降脂药吗？",
             "饮食方面需要特别注意什么？"
         ])
-
     if not checklist["questions_to_ask"]:
         checklist["questions_to_ask"] = [
             "我的各项指标有什么变化？",
             "接下来需要注意什么？",
             "需要做什么复查？"
         ]
-
     return checklist
 
 
 def tool_organize_medical_records(params):
-    """工具8: 整理医疗记录"""
     records = params.get("records", [])
-
     organized = {
         "total_records": len(records),
         "by_category": {},
@@ -385,29 +342,22 @@ def tool_organize_medical_records(params):
         "latest_abnormal": [],
         "summary": ""
     }
-
     for record in records:
         category = record.get("category", "其他")
-        if category not in organized["by_category"]:
-            organized["by_category"][category] = []
-        organized["by_category"][category].append(record)
+        organized["by_category"].setdefault(category, []).append(record)
         organized["timeline"].append({
             "date": record.get("date", ""),
             "type": record.get("type", ""),
             "category": category,
             "summary": record.get("summary", "")
         })
-
     organized["summary"] = f"共整理{len(records)}条医疗记录，分为{len(organized['by_category'])}个类别"
     organized["advice"] = "建议每年至少整理一次完整的医疗档案，便于就医时提供参考"
-
     return organized
 
 
 def tool_track_health_metrics(params):
-    """工具9: 记录健康指标"""
     metrics = params.get("metrics", {})
-
     return {
         "recorded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "metrics": metrics,
@@ -421,17 +371,13 @@ def tool_track_health_metrics(params):
 
 
 def tool_analyze_health_trend(params):
-    """工具10: 分析健康趋势"""
     days = params.get("days", 30)
     history = generate_health_history(days)
-
-    # 简单趋势分析
     recent_week = history[-7:]
     previous_week = history[-14:-7] if len(history) >= 14 else history[:7]
 
     avg_bp_recent = sum(d["blood_pressure_systolic"] for d in recent_week) / len(recent_week)
     avg_bp_previous = sum(d["blood_pressure_systolic"] for d in previous_week) / len(previous_week) if previous_week else avg_bp_recent
-
     avg_glucose_recent = sum(d["fasting_glucose"] for d in recent_week) / len(recent_week)
     avg_glucose_previous = sum(d["fasting_glucose"] for d in previous_week) / len(previous_week) if previous_week else avg_glucose_recent
 
@@ -465,110 +411,164 @@ def tool_analyze_health_trend(params):
 
 
 # ============================================================
-# 工具路由表
+# MCP 服务器（FastMCP，标准 JSON Schema 由类型注解自动生成）
 # ============================================================
 
-# scenario_id -> {tool_name.function_name -> handler}
-TOOL_REGISTRY = {
-    "family_health": {
-        "medical_report.parse": tool_parse_medical_report,
-        "medical_term.translate": tool_translate_medical_term,
-        "drug_interaction.check": tool_check_drug_interaction,
-        "medication.schedule": tool_get_medication_schedule,
-        "nutrition.guidelines": tool_get_nutrition_guidelines,
-        "food_drug_interaction.check": tool_check_food_drug_interaction,
-        "visit_checklist.generate": tool_generate_visit_checklist,
-        "medical_records.organize": tool_organize_medical_records,
-        "health_metrics.track": tool_track_health_metrics,
-        "health_trend.analyze": tool_analyze_health_trend,
-    }
-}
+mcp = FastMCP("family-health-tools")
 
 
-# ============================================================
-# HTTP 服务器
-# ============================================================
+class Medication(BaseModel):
+    name: str = Field(..., description="药物名称，例如 二甲双胍")
+    frequency: str = Field(default="每日1次", description="服药频率，例如 每日1次/每日2次")
+    time: str = Field(default="morning", description="服药时段：morning(早)/noon(午)/evening(晚)/before_sleep(睡前)")
+    dose: str = Field(default="1片", description="单次剂量，例如 1片/500mg")
+    instruction: str = Field(default="饭后服用", description="用药说明，例如 饭后服用/睡前")
 
-class ToolServerHandler(BaseHTTPRequestHandler):
-    def _send_json(self, code, data):
-        body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
 
-    def do_GET(self):
-        if self.path == "/health":
-            self._send_json(200, {"ok": True, "service": "family-health-mock-tool-gateway"})
-        else:
-            self._send_json(404, {"error": "Not Found", "path": self.path})
+class MedicalRecord(BaseModel):
+    category: str = Field(default="其他", description="记录类别，例如 检验/影像/门诊")
+    date: str = Field(default="", description="记录日期，格式 YYYY-MM-DD")
+    type: str = Field(default="", description="记录类型，例如 血常规/CT")
+    summary: str = Field(default="", description="记录摘要")
 
-    def do_POST(self):
-        # 解析路径: /tools/{scenario_id}/{tool_name}.{function_name}
-        parts = self.path.strip("/").split("/")
-        if len(parts) < 3 or parts[0] != "tools":
-            self._send_json(404, {"error": "Invalid path", "path": self.path})
-            return
 
-        scenario_id = parts[1]
-        tool_func = ".".join(parts[2:])
+@mcp.tool()
+def medical_report_parse(report_text: str, report_type: str = "体检报告") -> dict:
+    """解析医疗报告，提取异常项与正常项，给出初步评估。
 
-        # 读取请求体
-        content_length = int(self.headers.get("Content-Length", 0))
-        raw_body = self.rfile.read(content_length) if content_length > 0 else b"{}"
-        try:
-            params = json.loads(raw_body)
-        except json.JSONDecodeError:
-            self._send_json(400, {"error": "Invalid JSON body"})
-            return
+    当用户上传/描述体检报告、化验单、诊断证明时调用。
+    """
+    return tool_parse_medical_report({"report_text": report_text, "report_type": report_type})
 
-        # 查找工具
-        scenario_tools = TOOL_REGISTRY.get(scenario_id, {})
-        handler = scenario_tools.get(tool_func)
 
-        if handler is None:
-            available = list(scenario_tools.keys()) if scenario_tools else []
-            self._send_json(404, {
-                "error": f"Tool not found: {scenario_id}/{tool_func}",
-                "available_tools": available
-            })
-            return
+@mcp.tool()
+def medical_term_translate(term: str) -> dict:
+    """把医学专业术语翻译成大白话，并给出通俗比喻。
 
-        # 执行工具
-        try:
-            result = handler(params)
-            self._send_json(200, {"ok": True, "result": result})
-        except Exception as e:
-            self._send_json(500, {"ok": False, "error": str(e)})
+    当报告里出现看不懂的医学名词（如 低密度脂蛋白、ALT）时调用。
+    """
+    return tool_translate_medical_term({"term": term})
 
-    def log_message(self, fmt, *args):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {fmt % args}")
+
+@mcp.tool()
+def drug_interaction_check(drug_list: List[str]) -> dict:
+    """检查一组药物之间的相互作用，标注危险/注意等级。
+
+    当用户提供正在服用的多种药物清单时调用。
+    """
+    return tool_check_drug_interaction({"drug_list": drug_list})
+
+
+@mcp.tool()
+def medication_schedule(medications: List[Medication]) -> dict:
+    """根据药物清单生成每日用药时间表（早/午/晚/睡前）。
+
+    当用户需要安排每天吃药时间时调用。
+    """
+    meds = [m.model_dump() for m in medications]
+    return tool_get_medication_schedule({"medications": meds})
+
+
+@mcp.tool()
+def nutrition_guidelines(condition: str) -> dict:
+    """获取某疾病对应的营养建议（推荐食物/避免食物/饮食贴士）。
+
+    当需要根据高血压、2型糖尿病、高脂血症等疾病给出饮食方案时调用。
+    """
+    return tool_get_nutrition_guidelines({"condition": condition})
+
+
+@mcp.tool()
+def food_drug_interaction_check(foods: List[str], drugs: List[str]) -> dict:
+    """检查食物与药物之间的相互作用（如 葡萄柚+他汀、酒精+二甲双胍）。
+
+    当已知用户常吃的某些食物和正在服用的药物时调用。
+    """
+    return tool_check_food_drug_interaction({"foods": foods, "drugs": drugs})
+
+
+@mcp.tool()
+def visit_checklist_generate(visit_reason: str = "复诊", department: str = "内科", conditions: List[str] = []) -> dict:
+    """生成就医准备清单（需带资料、要问医生的问题等）。
+
+    当用户准备去看病/复诊，需要整理就医材料与问题时调用。
+    """
+    return tool_generate_visit_checklist({
+        "visit_reason": visit_reason,
+        "department": department,
+        "conditions": conditions
+    })
+
+
+@mcp.tool()
+def medical_records_organize(records: List[MedicalRecord]) -> dict:
+    """整理历史医疗记录，按类别汇总并生成时间线。
+
+    当用户提供多条分散的就医/检查记录需要归档时调用。
+    """
+    recs = [r.model_dump() for r in records]
+    return tool_organize_medical_records({"records": recs})
+
+
+@mcp.tool()
+def health_metrics_track(metrics: dict) -> dict:
+    """记录一次健康指标（血压/血糖/体重等），并给出口径对比。
+
+    当收到用户最新的健康测量数据时调用，用于留痕与追踪。
+    """
+    return tool_track_health_metrics({"metrics": metrics})
+
+
+@mcp.tool()
+def health_trend_analyze(days: int = 30) -> dict:
+    """分析最近若干天的健康指标趋势，识别异常并给出预警。
+
+    当需要看长期趋势、做健康预警时调用。
+    """
+    return tool_analyze_health_trend({"days": days})
+
+
+# ------------------------------------------------------------
+# 健康检查端点（保留，便于手动验证服务器在线）
+# ------------------------------------------------------------
+try:
+    from starlette.responses import JSONResponse
+    if hasattr(mcp, "custom_route"):
+        @mcp.custom_route("/health", methods=["GET"])
+        def _health(request):
+            return JSONResponse({"ok": True, "service": "family-health-mock-mcp-server"})
+except Exception:
+    # 老版本 mcp 不支持 custom_route 时，MCP 端点本身仍可正常工作
+    pass
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Family Health AI Manager - Mock Tool Server")
+    parser = argparse.ArgumentParser(description="Family Health AI Manager - Mock MCP Tool Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=18089, help="Port to bind (default: 18089)")
     args = parser.parse_args()
 
-    server = HTTPServer((args.host, args.port), ToolServerHandler)
-
     print("=" * 60)
-    print("  Family Health AI Manager - Mock Tool Server")
+    print("  Family Health AI Manager - Mock MCP Tool Server")
     print("=" * 60)
-    print(f"  Host: {args.host}")
-    print(f"  Port: {args.port}")
-    print(f"  Health Check: http://127.0.0.1:{args.port}/health")
-    print(f"  Tool Call: POST http://127.0.0.1:{args.port}/tools/family_health/<tool>.<func>")
+    print(f"  Host : {args.host}")
+    print(f"  Port : {args.port}")
+    print(f"  MCP  : http://127.0.0.1:{args.port}/mcp   (streamable-http)")
+    print(f"  Health: http://127.0.0.1:{args.port}/health")
     print()
-    print("  Available Tools:")
-    for tool_func in TOOL_REGISTRY["family_health"]:
-        print(f"    - family_health/{tool_func}")
+    print("  Exposed Tools (10):")
+    for t in [
+        "medical_report_parse", "medical_term_translate", "drug_interaction_check",
+        "medication_schedule", "nutrition_guidelines", "food_drug_interaction_check",
+        "visit_checklist_generate", "medical_records_organize", "health_metrics_track",
+        "health_trend_analyze",
+    ]:
+        print(f"    - {t}")
     print("=" * 60)
     print()
 
-    server.serve_forever()
+    # 以 streamable-http 传输运行；worker(YAML 中 spec.mcpServers.url) 指向 /mcp
+    mcp.run(transport="streamable-http", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
