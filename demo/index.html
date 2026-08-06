@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家庭健康 AI 管家</title>
+<style>
+  :root {
+    --primary: #4F46E5;
+    --primary-light: #818CF8;
+    --primary-dark: #3730A3;
+    --bg: #F8FAFC;
+    --card: #FFFFFF;
+    --text: #1E293B;
+    --text-secondary: #64748B;
+    --border: #E2E8F0;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --health-green: #059669;
+    --health-blue: #0284C7;
+    --health-teal: #0D9488;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ===== 登录页 ===== */
+  .login-screen {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    z-index: 100;
+  }
+  .login-card {
+    background: var(--card); border-radius: 20px;
+    padding: 48px 40px; width: 400px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+  .login-logo {
+    width: 80px; height: 80px; margin: 0 auto 20px;
+    background: linear-gradient(135deg, var(--health-green), var(--health-teal));
+    border-radius: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+  }
+  .login-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .login-subtitle { color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
+  .login-field {
+    width: 100%; padding: 14px 16px; border: 2px solid var(--border);
+    border-radius: var(--radius-sm); font-size: 15px;
+    margin-bottom: 16px; transition: border-color 0.2s;
+    outline: none;
+  }
+  .login-field:focus { border-color: var(--primary-light); }
+  .login-btn {
+    width: 100%; padding: 14px; border: none; border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white; font-size: 16px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s, transform 0.1s;
+  }
+  .login-btn:hover { opacity: 0.9; }
+  .login-btn:active { transform: scale(0.98); }
+  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .login-error {
+    color: var(--danger); font-size: 13px; margin-top: 12px;
+    display: none;
+  }
+  .login-hint {
+    color: var(--text-secondary); font-size: 12px; margin-top: 20px;
+    line-height: 1.6;
+  }
+
+  /* ===== 主界面 ===== */
+  .app { display: none; height: 100vh; }
+
+  /* 侧边栏 */
+  .sidebar {
+    width: 300px; height: 100vh;
+    background: var(--card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    position: fixed; left: 0; top: 0; z-index: 10;
+  }
+  .sidebar-header {
+    padding: 24px 20px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--health-green), var(--health-teal));
+  }
+  .sidebar-brand {
+    display: flex; align-items: center; gap: 12px;
+    color: white;
+  }
+  .sidebar-icon {
+    width: 42px; height: 42px; background: rgba(255,255,255,0.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .sidebar-brand-text h1 { font-size: 17px; font-weight: 700; }
+  .sidebar-brand-text p { font-size: 11px; opacity: 0.8; }
+
+  .room-list { flex: 1; overflow-y: auto; padding: 12px; }
+  .room-item {
+    padding: 14px 16px; border-radius: var(--radius-sm);
+    cursor: pointer; margin-bottom: 4px;
+    transition: background 0.15s;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .room-item:hover { background: var(--bg); }
+  .room-item.active { background: #EEF2FF; }
+  .room-avatar {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: white; flex-shrink: 0;
+  }
+  .room-info { flex: 1; min-width: 0; }
+  .room-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .room-preview { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .room-badge {
+    width: 22px; height: 22px; border-radius: 11px;
+    background: var(--primary); color: white;
+    font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* 聊天区 */
+  .chat-area {
+    margin-left: 300px; height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  .chat-header {
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+    background: var(--card); display: flex; align-items: center; gap: 14px;
+  }
+  .chat-header-avatar {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: white;
+  }
+  .chat-header-info h2 { font-size: 16px; font-weight: 600; }
+  .chat-header-info p { font-size: 12px; color: var(--success); }
+  .chat-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  /* 消息列表 */
+  .messages {
+    flex: 1; overflow-y: auto; padding: 24px 28px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .msg {
+    max-width: 70%; padding: 14px 18px; border-radius: 18px;
+    font-size: 14px; line-height: 1.6; word-break: break-word;
+    position: relative; animation: msgIn 0.25s ease-out;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .msg-user {
+    background: var(--primary); color: white;
+    align-self: flex-end; border-bottom-right-radius: 4px;
+  }
+  .msg-agent {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border);
+    align-self: flex-start; border-bottom-left-radius: 4px;
+  }
+  .msg-system {
+    align-self: center; background: transparent;
+    color: var(--text-secondary); font-size: 12px;
+    padding: 6px 14px;
+  }
+  .msg-sender {
+    font-size: 11px; font-weight: 600; margin-bottom: 4px;
+    display: block;
+  }
+  .msg-agent .msg-sender { color: var(--primary); }
+  .msg-time {
+    font-size: 10px; opacity: 0.6; margin-top: 6px; display: block;
+  }
+  .msg-typing {
+    align-self: flex-start; background: var(--card);
+    border: 1px solid var(--border); padding: 14px 18px;
+    border-radius: 18px; border-bottom-left-radius: 4px;
+  }
+  .typing-dots span {
+    display: inline-block; width: 7px; height: 7px;
+    background: var(--text-secondary); border-radius: 50%;
+    margin: 0 2px; animation: typing 1.4s infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+  }
+
+  /* 输入区 */
+  .input-area {
+    padding: 16px 28px 20px;
+    background: var(--card); border-top: 1px solid var(--border);
+  }
+  .input-row {
+    display: flex; gap: 12px; align-items: flex-end;
+  }
+  .input-box {
+    flex: 1; padding: 14px 18px; border: 2px solid var(--border);
+    border-radius: 24px; font-size: 14px; resize: none;
+    outline: none; max-height: 120px; min-height: 50px;
+    font-family: inherit; line-height: 1.5;
+    transition: border-color 0.2s;
+  }
+  .input-box:focus { border-color: var(--primary-light); }
+  .send-btn {
+    width: 50px; height: 50px; border: none; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white; font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, opacity 0.2s; flex-shrink: 0;
+  }
+  .send-btn:hover { opacity: 0.9; }
+  .send-btn:active { transform: scale(0.93); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* 快捷操作 */
+  .quick-actions {
+    display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .quick-btn {
+    padding: 8px 14px; border: 1px solid var(--border);
+    border-radius: 20px; background: var(--bg);
+    font-size: 12px; color: var(--text-secondary);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .quick-btn:hover { border-color: var(--primary-light); color: var(--primary); background: #EEF2FF; }
+
+  /* 连接状态 */
+  .connection-bar {
+    padding: 8px 20px; font-size: 12px; text-align: center;
+    background: #FEF3C7; color: #92400E;
+    display: none;
+  }
+  .connection-bar.connected { background: #D1FAE5; color: #065F46; }
+  .connection-bar.error { background: #FEE2E2; color: #991B1B; }
+
+  /* 团队面板 */
+  .team-panel {
+    padding: 16px 20px; border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .team-panel-title {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+  }
+  .team-members { display: flex; gap: 8px; flex-wrap: wrap; }
+  .team-member-tag {
+    padding: 4px 10px; border-radius: 12px; font-size: 11px;
+    font-weight: 500; display: flex; align-items: center; gap: 4px;
+  }
+  .team-member-tag .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+  }
+
+  /* 欢迎页面 */
+  .welcome-screen {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  .welcome-card {
+    text-align: center; padding: 48px;
+  }
+  .welcome-icon {
+    font-size: 64px; margin-bottom: 20px;
+  }
+  .welcome-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .welcome-desc { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+
+  /* 响应式 */
+  @media (max-width: 768px) {
+    .sidebar { width: 72px; }
+    .sidebar-brand-text, .room-info, .room-preview, .team-panel { display: none; }
+    .room-item { justify-content: center; padding: 12px; }
+    .chat-area { margin-left: 72px; }
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+</style>
+</head>
+<body>
+
+<!-- ===== 登录页 ===== -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">🏥</div>
+    <div class="login-title">家庭健康 AI 管家</div>
+    <div class="login-subtitle">基于 AgentTeams 多智能体协作系统</div>
+    <input class="login-field" id="homeserver" type="text" placeholder="Matrix 服务器地址（留空用同源）" value="">
+    <input class="login-field" id="username" type="text" placeholder="用户名" value="admin">
+    <input class="login-field" id="password" type="password" placeholder="密码" value="">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">连接到健康管家团队</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-hint">
+      默认地址：Cloud Studio 本地 18080 端口（Higress Gateway）<br>
+      账号为安装时生成的 Admin 凭据
+    </div>
+  </div>
+</div>
+
+<!-- ===== 主应用 ===== -->
+<div class="app" id="app">
+  <!-- 连接状态栏 -->
+  <div class="connection-bar" id="connBar">⏳ 正在连接...</div>
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <div class="sidebar-icon">🏥</div>
+        <div class="sidebar-brand-text">
+          <h1>家庭健康管家</h1>
+          <p>Agent Teams · 多智能体协作</p>
+        </div>
+      </div>
+    </div>
+    <div class="room-list" id="roomList">
+      <!-- 动态生成房间列表 -->
+    </div>
+    <div class="team-panel">
+      <div class="team-panel-title">团队成员</div>
+      <div class="team-members" id="teamMembers">
+        <span class="team-member-tag" style="background:#EEF2FF;color:#4338CA"><span class="dot"></span>小析·分析师</span>
+        <span class="team-member-tag" style="background:#ECFDF5;color:#065F46"><span class="dot"></span>小译·翻译官</span>
+        <span class="team-member-tag" style="background:#FEF3C7;color:#92400E"><span class="dot"></span>小药·用药师</span>
+        <span class="team-member-tag" style="background:#F0FDFA;color:#115E59"><span class="dot"></span>小膳·营养师</span>
+        <span class="team-member-tag" style="background:#EFF6FF;color:#1E40AF"><span class="dot"></span>小导·导航员</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 聊天区 -->
+  <main class="chat-area">
+    <div class="chat-header" id="chatHeader" style="display:none">
+      <div class="chat-header-avatar" id="headerAvatar">💬</div>
+      <div class="chat-header-info">
+        <h2 id="headerTitle">选择一个对话</h2>
+        <p><span class="chat-status-dot"></span><span id="headerStatus">在线</span></p>
+      </div>
+    </div>
+    <div class="messages" id="messages">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-card">
+          <div class="welcome-icon">👋</div>
+          <div class="welcome-title">欢迎回来，健康守护者</div>
+          <div class="welcome-desc">
+            选择左侧的对话开始协作<br>
+            或向 Manager 发送健康咨询任务
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="input-area" id="inputArea" style="display:none">
+      <div class="input-row">
+        <textarea class="input-box" id="msgInput" rows="1" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+      </div>
+      <div class="quick-actions" id="quickActions">
+        <button class="quick-btn" onclick="quickSend('帮我解读这份体检报告：血压偏高，血糖正常')">📋 解读体检报告</button>
+        <button class="quick-btn" onclick="quickSend('高血压患者日常饮食需要注意什么？')">🥗 饮食建议</button>
+        <button class="quick-btn" onclick="quickSend('阿司匹林和布洛芬能一起吃吗？')">💊 用药检查</button>
+        <button class="quick-btn" onclick="quickSend('明天要去看心内科，需要准备什么？')">🏥 就医准备</button>
+        <button class="quick-btn" onclick="quickSend('请分析最近一周的健康趋势')">📈 趋势分析</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ===== 全局状态 =====
+let accessToken = '';
+let userId = '';
+let homeserver = '';
+let currentRoomId = null;
+let syncToken = '';
+let syncTimeout = null;
+let roomMap = {};       // roomId → room info
+let memberColors = {};  // userId → color
+
+const MEMBER_STYLES = [
+  { bg: '#EEF2FF', color: '#4338CA', icon: '📊' },  // analyst
+  { bg: '#ECFDF5', color: '#065F46', icon: '🌐' },   // translator
+  { bg: '#FEF3C7', color: '#92400E', icon: '💊' },   // medication
+  { bg: '#F0FDFA', color: '#115E59', icon: '🥗' },   // nutrition
+  { bg: '#EFF6FF', color: '#1E40AF', icon: '🧭' },   // visit
+  { bg: '#FDF4FF', color: '#86198F', icon: '🤖' },   // manager/bot
+];
+
+function getMemberStyle(name) {
+  if (name.includes('analyst') || name.includes('小析')) return MEMBER_STYLES[0];
+  if (name.includes('translator') || name.includes('小译')) return MEMBER_STYLES[1];
+  if (name.includes('medication') || name.includes('小药')) return MEMBER_STYLES[2];
+  if (name.includes('nutrition') || name.includes('小膳')) return MEMBER_STYLES[3];
+  if (name.includes('visit') || name.includes('小导')) return MEMBER_STYLES[4];
+  if (name.includes('manager') || name.includes('Manager')) return MEMBER_STYLES[5];
+  return MEMBER_STYLES[5];
+}
+
+// ===== API 封装 =====
+async function matrixApi(method, path, body = null) {
+  const url = `${homeserver}${path}${path.includes('?') ? '&' : '?'}access_token=${accessToken}`;
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || data.errcode || `HTTP ${res.status}`);
+  return data;
+}
+
+// ===== 登录 =====
+async function doLogin() {
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  btn.disabled = true; btn.textContent = '⏳ 连接中...';
+  errEl.style.display = 'none';
+
+  // 如果留空，使用同源地址（部署在 Controller nginx 下时自动生效）
+  const hsInput = document.getElementById('homeserver').value.trim();
+  homeserver = hsInput ? hsInput.replace(/\/+$/, '') : window.location.origin;
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+
+  try {
+    const data = await matrixApi('POST', '/_matrix/client/v3/login', {
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: username },
+      password: password,
+    });
+
+    accessToken = data.access_token;
+    userId = data.user_id;
+
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    showConnBar('connected', `✅ 已连接为 ${userId}`);
+
+    // 加载房间列表
+    await loadRooms();
+
+    // 开始同步
+    startSync();
+
+  } catch (e) {
+    errEl.textContent = `❌ 连接失败: ${e.message}`;
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '连接到健康管家团队';
+  }
+}
+
+// ===== 房间列表 =====
+async function loadRooms() {
+  try {
+    const data = await matrixApi('GET', '/_matrix/client/v3/joined_rooms');
+    const listEl = document.getElementById('roomList');
+    listEl.innerHTML = '';
+
+    // 并行获取每个房间的信息
+    for (const roomId of data.joined_rooms) {
+      try {
+        const roomState = await matrixApi('GET', `/_matrix/client/v3/rooms/${roomId}/state/m.room.name/`);
+        const name = roomState.name || roomId.replace('!', '').split(':')[0];
+        const members = await matrixApi('GET', `/_matrix/client/v3/rooms/${roomId}/members`);
+        const memberCount = Object.keys(members.chunk || {}).length;
+
+        roomMap[roomId] = { id: roomId, name, memberCount };
+
+        const style = getMemberStyle(name);
+        const item = document.createElement('div');
+        item.className = 'room-item';
+        item.dataset.roomId = roomId;
+        item.innerHTML = `
+          <div class="room-avatar" style="background:${style.bg};color:${style.color}">${style.icon}</div>
+          <div class="room-info">
+            <div class="room-name">${name}</div>
+            <div class="room-preview">${memberCount} 位成员</div>
+          </div>
+        `;
+        item.onclick = () => selectRoom(roomId);
+        listEl.appendChild(item);
+      } catch (e) {
+        console.warn('Failed to load room:', roomId, e);
+      }
+    }
+
+    if (data.joined_rooms.length === 0) {
+      listEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:13px;">暂无对话<br>请通过 Manager 创建 Worker 对话</div>';
+    }
+  } catch (e) {
+    console.error('Failed to load rooms:', e);
+    showConnBar('error', `❌ 加载房间失败: ${e.message}`);
+  }
+}
+
+// ===== 选择房间 =====
+async function selectRoom(roomId) {
+  currentRoomId = roomId;
+  const room = roomMap[roomId];
+  if (!room) return;
+
+  // 更新 UI
+  document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`[data-room-id="${roomId}"]`)?.classList.add('active');
+
+  const style = getMemberStyle(room.name);
+  document.getElementById('chatHeader').style.display = 'flex';
+  document.getElementById('headerAvatar').style.background = style.bg;
+  document.getElementById('headerAvatar').style.color = style.color;
+  document.getElementById('headerAvatar').textContent = style.icon;
+  document.getElementById('headerTitle').textContent = room.name;
+  document.getElementById('inputArea').style.display = 'block';
+  document.getElementById('welcomeScreen').style.display = 'none';
+
+  // 加载历史消息
+  await loadMessages(roomId);
+}
+
+// ===== 消息加载 =====
+async function loadMessages(roomId) {
+  const msgsEl = document.getElementById('messages');
+  msgsEl.innerHTML = '';
+
+  try {
+    const data = await matrixApi('GET', `/_matrix/client/v3/rooms/${roomId}/messages?dir=b&limit=50`);
+
+    // 反转显示（旧的在上）
+    const events = (data.chunk || []).filter(e => e.type === 'm.room.message').reverse();
+
+    if (events.length === 0) {
+      appendSystemMsg('暂无消息，发送一条开始对话吧！');
+      return;
+    }
+
+    for (const ev of events) {
+      renderMessage(ev, false);
+    }
+
+    scrollToBottom();
+  } catch (e) {
+    console.error('Failed to load messages:', e);
+    appendSystemMsg('加载历史消息失败');
+  }
+}
+
+// ===== 渲染消息 =====
+function renderMessage(ev, animate = true) {
+  if (ev.type !== 'm.room.message') return;
+  const content = ev.content || {};
+  if (content.msgtype !== 'm.text') return;
+
+  const sender = ev.sender || 'unknown';
+  const isMe = sender === userId;
+  const body = content.body || '';
+
+  const msgsEl = document.getElementById('messages');
+  // 隐藏欢迎屏
+  const ws = document.getElementById('welcomeScreen');
+  if (ws) ws.style.display = 'none';
+
+  const div = document.createElement('div');
+  div.className = `msg ${isMe ? 'msg-user' : 'msg-agent'}`;
+
+  const displayName = sender.split(':')[0].replace('@', '');
+  const time = ev.origin_server_ts ? new Date(ev.origin_server_ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  let senderHtml = '';
+  if (!isMe) {
+    senderHtml = `<span class="msg-sender">${displayName}</span>`;
+  }
+
+  div.innerHTML = `${senderHtml}${escapeHtml(body)}${time ? `<span class="msg-time">${time}</span>` : ''}`;
+  if (!animate) div.style.animation = 'none';
+  msgsEl.appendChild(div);
+
+  scrollToBottom();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function appendSystemMsg(text) {
+  const msgsEl = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg msg-system';
+  div.textContent = text;
+  msgsEl.appendChild(div);
+}
+
+function showTyping() {
+  removeTyping();
+  const msgsEl = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg msg-typing';
+  div.id = 'typingIndicator';
+  div.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  msgsEl.appendChild(div);
+  scrollToBottom();
+}
+
+function removeTyping() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  const el = document.getElementById('messages');
+  requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+}
+
+// ===== 发送消息 =====
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text || !currentRoomId) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  // 立即显示用户消息
+  const msgsEl = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg msg-user';
+  div.textContent = text;
+  msgsEl.appendChild(div);
+  scrollToBottom();
+
+  // 显示输入指示器
+  showTyping();
+
+  try {
+    const txnId = `m${Date.now()}`;
+    await matrixApi('PUT', `/_matrix/client/v3/rooms/${currentRoomId}/send/m.room.message/${txnId}`, {
+      msgtype: 'm.text',
+      body: text,
+    });
+  } catch (e) {
+    removeTyping();
+    appendSystemMsg(`发送失败: ${e.message}`);
+  }
+}
+
+// ===== 快捷发送 =====
+function quickSend(text) {
+  document.getElementById('msgInput').value = text;
+  sendMessage();
+}
+
+// ===== 同步（长轮询）=====
+async function startSync() {
+  try {
+    const url = syncToken
+      ? `/_matrix/client/v3sync?timeout=30000&since=${encodeURIComponent(syncToken)}`
+      : `/_matrix/client/v3/sync?timeout=30000&filter={"room":{"timeline":{"limit":20}}}`;
+
+    const data = await matrixApi('GET', url);
+    syncToken = data.next_batch;
+
+    // 处理新消息
+    for (const [roomId, roomData] of Object(data.rooms?.join || {})) {
+      const events = roomData.timeline?.events || [];
+      for (const ev of events) {
+        if (ev.type === 'm.room.message' && ev.sender !== userId) {
+          if (roomId === currentRoomId) {
+            removeTyping();
+            renderMessage(ev, true);
+          }
+        }
+      }
+    }
+
+    // 继续下一轮同步
+    syncTimeout = setTimeout(startSync, 500);
+  } catch (e) {
+    console.error('Sync error:', e);
+    showConnBar('error', `⚠️ 同步中断: ${e.message}，5秒后重试...`);
+    setTimeout(startSync, 5000);
+  }
+}
+
+// ===== 工具函数 =====
+function showConnBar(status, text) {
+  const bar = document.getElementById('connBar');
+  bar.className = `connection-bar ${status}`;
+  bar.textContent = text;
+  bar.style.display = 'block';
+  if (status === 'connected') {
+    setTimeout(() => { bar.style.display = 'none'; }, 3000);
+  }
+}
+
+// ===== 输入框自动高度 =====
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('msgInput');
+  if (!input) return;
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+});
+
+// 回车提交登录密码
+document.getElementById('password')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>
